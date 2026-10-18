@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Speech to Text</title>
+<style>
+  :root { --ink:#1c1a17; --ink2:#6f6a61; --hairline:#e3ddd2; --page:#f6f2ea; --card:#fffdf9; --accent:#0f7b6c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:28px 18px 48px; }
+  h1 { font-family:Georgia,"Times New Roman",serif; font-weight:600; font-size:30px; margin:6px 0 2px; }
+  .sub { color:var(--ink2); margin:0 0 6px; font-size:15px; }
+  .intro { font-size:16px; line-height:1.5; margin:14px 0 20px; }
+  .card { background:var(--card); border:1px solid var(--hairline); border-radius:16px; padding:18px; margin-bottom:18px; }
+  .label { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); margin:0 0 10px; }
+  .langs { display:flex; flex-wrap:wrap; gap:8px; }
+  .langs button { border:1px solid var(--hairline); background:#fff; color:var(--ink); border-radius:999px; padding:10px 16px; font-size:15px; }
+  .langs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .big { background:var(--ink); color:#fff; border:none; border-radius:999px; padding:14px 26px; font-size:17px; }
+  .big.stop { background:#fff; color:var(--ink); border:1px solid var(--ink); }
+  .live { display:none; align-items:center; gap:8px; color:var(--ink2); font-size:14px; }
+  .live.on { display:inline-flex; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#d33; animation:p 1.2s ease-in-out infinite; }
+  @keyframes p { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .status { color:var(--ink2); font-size:14px; margin:10px 0 0; min-height:1em; }
+  .transcript { min-height:150px; max-height:45vh; overflow-y:auto; border:1px solid var(--hairline); border-radius:12px; padding:14px 16px; background:var(--page); }
+  .transcript p { margin:0; font-size:17px; line-height:1.55; white-space:pre-wrap; overflow-wrap:break-word; }
+  .empty, .interim { color:var(--ink2); }
+  .interim { font-style:italic; }
+  .count { color:var(--ink2); font-size:13px; margin:8px 0 12px; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; }
+  .actions button { border:1px solid var(--hairline); background:#fff; color:var(--ink); border-radius:10px; padding:11px 16px; font-size:15px; }
+  .actions button:disabled { opacity:.45; }
+  .note { border-left:3px solid var(--hairline); padding:4px 0 4px 14px; color:var(--ink2); font-size:14px; line-height:1.55; }
+  .note b { color:var(--ink); }
+  .foot { color:var(--ink2); font-size:13px; margin-top:22px; }
+  button { cursor:pointer; min-height:44px; -webkit-tap-highlight-color:transparent; }
+  textarea { width:100%; min-height:110px; border:1px solid var(--hairline); border-radius:12px; padding:12px 14px; font-size:16px; font-family:inherit; background:var(--page); color:var(--ink); resize:vertical; }
+  select { width:100%; border:1px solid var(--hairline); border-radius:10px; padding:12px; font-size:15px; background:#fff; color:var(--ink); }
+  .slider-row { display:flex; align-items:center; gap:12px; margin-top:12px; }
+  .slider-row input[type=range] { flex:1; }
+  .slider-row .val { color:var(--ink2); font-size:14px; min-width:34px; text-align:right; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Speech to Text</h1>
+  <p class="sub">Tap the mic and talk</p>
+  <p class="intro">Turn your voice into text you can copy or save. Pick a language, tap Start, allow the microphone, and talk. Your words appear as you speak.</p>
+
+  <div class="card" id="unsupported" style="display:none">
+    <p class="label">Heads up</p>
+    <p class="note"><b>This browser cannot transcribe.</b><br>Speech recognition is built into Chrome, Edge, and Safari. Open this file in one of those and try again.</p>
+  </div>
+
+  <div id="app">
+    <div class="card">
+      <p class="label">Language</p>
+      <div class="langs" id="langs"></div>
+    </div>
+
+    <div class="card">
+      <p class="label">Record</p>
+      <div class="row">
+        <button class="big" id="toggle">Start listening</button>
+        <span class="live" id="live"><span class="dot"></span>Listening</span>
+      </div>
+      <p class="status" id="status"></p>
+    </div>
+
+    <div class="card">
+      <p class="label">Transcript</p>
+      <div class="transcript" id="box" aria-live="polite"><p class="empty">Nothing yet. Tap Start listening and talk.</p></div>
+      <p class="count" id="count">0 words</p>
+      <div class="actions">
+        <button id="copy" disabled>Copy text</button>
+        <button id="save" disabled>Save as .txt</button>
+        <button id="clear" disabled>Clear</button>
+      </div>
+    </div>
+
+
+    <div class="card">
+      <p class="label">Text to speech</p>
+      <textarea id="ttsText" placeholder="Type or paste something, then tap Speak."></textarea>
+      <div class="row" style="margin-top:12px">
+        <select id="voice" aria-label="Voice"></select>
+      </div>
+      <div class="slider-row">
+        <span style="color:var(--ink2);font-size:14px">Speed</span>
+        <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+        <span class="val" id="rateVal">1.0x</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="big" id="speak">Speak</button>
+        <button class="big stop" id="stopSpeak" style="display:none">Stop</button>
+      </div>
+      <p class="status" id="ttsStatus"></p>
+    </div>
+
+    <div class="card">
+      <p class="label">Good to know</p>
+      <p class="note"><b>A few honest limits.</b><br>Works best in Chrome or Edge on Android and desktop, and Safari on iPhone. Accuracy depends on your mic and the room, so speak at a normal pace and expect to fix a word or two. Your browser sends the audio to its own speech service to transcribe it, so avoid reading out passwords or anything sensitive.</p>
+    </div>
+  </div>
+
+  <p class="foot">Your transcript stays on this device until you copy or save it.</p>
+</div>
+
+<script>
+(function () {
+  var Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var toggle = document.getElementById('toggle');
+  var live = document.getElementById('live');
+  var status = document.getElementById('status');
+  var box = document.getElementById('box');
+  var count = document.getElementById('count');
+  var copyBtn = document.getElementById('copy');
+  var saveBtn = document.getElementById('save');
+  var clearBtn = document.getElementById('clear');
+
+  if (!Ctor) {
+    document.getElementById('unsupported').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+    return;
+  }
+
+  var LANGS = [['en-US','English'],['es-US','Espanol'],['pt-BR','Portugues'],['fr-FR','Francais'],['de-DE','Deutsch']];
+  var lang = 'en-US';
+  var langWrap = document.getElementById('langs');
+  LANGS.forEach(function (l) {
+    var b = document.createElement('button');
+    b.textContent = l[1];
+    b.dataset.value = l[0];
+    if (l[0] === lang) b.className = 'on';
+    b.addEventListener('click', function () {
+      if (listening) stop();
+      lang = l[0];
+      Array.prototype.forEach.call(langWrap.children, function (c) { c.className = c.dataset.value === lang ? 'on' : ''; });
+    });
+    langWrap.appendChild(b);
+  });
+
+  var rec = null, listening = false, finalText = '', interim = '';
+
+  function render() {
+    var text = finalText + (interim ? (finalText ? ' ' : '') + interim : '');
+    var words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    count.textContent = words + (words === 1 ? ' word' : ' words');
+    if (!text) {
+      box.innerHTML = '<p class="empty">' + (listening ? 'Listening... your words will land here.' : 'Nothing yet. Tap Start listening and talk.') + '</p>';
+    } else {
+      var p = document.createElement('p');
+      p.textContent = finalText;
+      if (interim) {
+        var s = document.createElement('span');
+        s.className = 'interim';
+        s.textContent = (finalText ? ' ' : '') + interim;
+        p.appendChild(s);
+      }
+      box.innerHTML = '';
+      box.appendChild(p);
+      box.scrollTop = box.scrollHeight;
+    }
+    copyBtn.disabled = saveBtn.disabled = !finalText;
+    clearBtn.disabled = !finalText && !interim;
+  }
+
+  function stop() {
+    listening = false;
+    toggle.textContent = 'Start listening';
+    toggle.className = 'big';
+    live.className = 'live';
+    status.textContent = '';
+    try { rec && rec.stop(); } catch (e) {}
+    interim = '';
+    render();
+  }
+
+  function start() {
+    rec = new Ctor();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = lang;
+    rec.onresult = function (e) {
+      var interimChunk = '', finalChunk = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalChunk += e.results[i][0].transcript;
+        else interimChunk += e.results[i][0].transcript;
+      }
+      if (finalChunk) {
+        var needSpace = finalText && !/[\s\n]$/.test(finalText);
+        finalText += (needSpace ? ' ' : '') + finalChunk.trim();
+      }
+      interim = interimChunk;
+      render();
+    };
+    rec.onerror = function (e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        listening = false;
+        toggle.textContent = 'Start listening';
+        toggle.className = 'big';
+        live.className = 'live';
+        status.textContent = 'Microphone access was blocked. Allow the mic for this page and try again.';
+      } else if (e.error === 'no-speech') {
+        status.textContent = 'Nothing heard yet. Keep talking.';
+      } else if (e.error === 'audio-capture') {
+        status.textContent = 'No microphone found. Check that your mic is connected.';
+      } else if (e.error !== 'aborted') {
+        status.textContent = 'The speech service hit a snag. Trying to keep going.';
+      }
+    };
+    rec.onend = function () {
+      if (listening) { try { rec.start(); } catch (e) {} } // mobile browsers pause after silence; keep going
+      else { interim = ''; render(); }
+    };
+    listening = true;
+    toggle.textContent = 'Stop';
+    toggle.className = 'big stop';
+    live.className = 'live on';
+    status.textContent = '';
+    copyBtn.textContent = 'Copy text';
+    try { rec.start(); } catch (e) { stop(); }
+    render();
+  }
+
+  toggle.addEventListener('click', function () { listening ? stop() : start(); });
+
+  copyBtn.addEventListener('click', function () {
+    if (!finalText) return;
+    function done(ok) {
+      copyBtn.textContent = ok ? 'Copied' : 'Copy text';
+      status.textContent = ok ? 'Copied to your clipboard.' : 'Copy did not work here. Long-press the text to copy it.';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(finalText).then(function () { done(true); }, function () { legacy(); });
+    } else legacy();
+    function legacy() {
+      var a = document.createElement('textarea');
+      a.value = finalText;
+      document.body.appendChild(a);
+      a.select();
+      try { done(document.execCommand('copy')); } catch (e) { done(false); }
+      document.body.removeChild(a);
+    }
+  });
+
+  saveBtn.addEventListener('click', function () {
+    if (!finalText) return;
+    var blob = new Blob([finalText], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcript.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  });
+
+  clearBtn.addEventListener('click', function () {
+    finalText = ''; interim = '';
+    copyBtn.textContent = 'Copy text';
+    status.textContent = '';
+    render();
+  });
+
+  // ---- Text to speech ----
+  var ttsText = document.getElementById('ttsText');
+  var voiceSel = document.getElementById('voice');
+  var rate = document.getElementById('rate');
+  var rateVal = document.getElementById('rateVal');
+  var speakBtn = document.getElementById('speak');
+  var stopBtn = document.getElementById('stopSpeak');
+  var ttsStatus = document.getElementById('ttsStatus');
+  var voices = [];
+
+  function pickDefaultVoice(list) {
+    var prefix = lang.split('-')[0];
+    for (var i = 0; i < list.length; i++) if (list[i].lang && list[i].lang.toLowerCase().indexOf(prefix) === 0) return i;
+    return 0;
+  }
+
+  function loadVoices() {
+    voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    voiceSel.innerHTML = '';
+    if (!voices.length) {
+      var o = document.createElement('option');
+      o.textContent = 'Default voice';
+      voiceSel.appendChild(o);
+      return;
+    }
+    var def = pickDefaultVoice(voices);
+    voices.forEach(function (v, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = v.name + ' (' + v.lang + ')';
+      if (i === def) o.selected = true;
+      voiceSel.appendChild(o);
+    });
+  }
+
+  if ('speechSynthesis' in window) {
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  } else {
+    speakBtn.disabled = true;
+    ttsStatus.textContent = 'This browser has no speech voices built in.';
+  }
+
+  rate.addEventListener('input', function () { rateVal.textContent = Number(rate.value).toFixed(1) + 'x'; });
+
+  speakBtn.addEventListener('click', function () {
+    var text = ttsText.value.trim();
+    if (!text) { ttsStatus.textContent = 'Type something first.'; return; }
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    var v = voices[Number(voiceSel.value)];
+    if (v) u.voice = v;
+    u.rate = Number(rate.value);
+    speakBtn.style.display = 'none';
+    stopBtn.style.display = '';
+    ttsStatus.textContent = 'Speaking...';
+    u.onend = u.onerror = function () {
+      speakBtn.style.display = '';
+      stopBtn.style.display = 'none';
+      ttsStatus.textContent = '';
+    };
+    speechSynthesis.speak(u);
+  });
+
+  stopBtn.addEventListener('click', function () {
+    speechSynthesis.cancel();
+    speakBtn.style.display = '';
+    stopBtn.style.display = 'none';
+    ttsStatus.textContent = '';
+  });
+})();
+</script>
+</body>
+</html>
